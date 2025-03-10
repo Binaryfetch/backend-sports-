@@ -1,0 +1,198 @@
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import "./sportsApp.css";
+
+const collegeName = "GGI Khanna";
+
+function SportsApp() {
+  const [selectedEvents, setSelectedEvents] = useState({});
+  const [athleteData, setAthleteData] = useState({});
+  const [studentEventCount, setStudentEventCount] = useState({});
+  const navigate = useNavigate();
+
+  const events = [
+    "100m Race", "200m Race", "400m Race", "800m Race",
+    "1500m Race", "5000m Race", "10000m Race", "110m Hurdles",
+    "400m Hurdles", "Long Jump", "Triple Jump", "High Jump",
+    "Shot Put", "Discuss Throw", "Javelin Throw", "Hammer Throw",
+    "4x100m Relay", "4x400m Relay"
+  ];
+
+  const handleLogout = async () => {
+    await fetch("http://localhost:5000/logout", { credentials: "include" });
+    navigate("/");
+  };
+
+  const handleEventSelection = (eventName) => {
+    setSelectedEvents((prev) => {
+      const newSelection = { ...prev };
+      if (newSelection[eventName]) {
+        delete newSelection[eventName];
+        setAthleteData((prevData) => {
+          const newData = { ...prevData };
+          delete newData[eventName];
+          return newData;
+        });
+      } else {
+        if (Object.keys(newSelection).length >= 2) {
+          alert("You can only select up to 2 events.");
+          return prev;
+        }
+        newSelection[eventName] = true;
+      }
+      return newSelection;
+    });
+  };
+
+  const handleInputChange = (eventName, studentKey, field, value) => {
+    if (field === "urn" && value) {
+      const urnPrefix = value.substring(0, 5); // Checking first 5 digits as prefix
+
+      const studentURNs = Object.values(athleteData).flatMap((event) =>
+        Object.values(event).map((student) => student.urn?.substring(0, 5))
+      );
+
+      const samePrefixCount = studentURNs.filter((urn) => urn === urnPrefix).length;
+
+      if (samePrefixCount >= 2) {
+        alert(`Students with URN starting ${urnPrefix} are already registered in 2 events.`);
+        return;
+      }
+    }
+
+    setAthleteData((prev) => {
+      const newData = { ...prev };
+      if (!newData[eventName]) newData[eventName] = {};
+      newData[eventName][studentKey] = { ...newData[eventName][studentKey], [field]: value };
+      return newData;
+    });
+  };
+
+  const handleSubmit = async () => {
+    const formData = new FormData();
+    const selectedEventsArray = Object.keys(selectedEvents);
+
+    if (selectedEventsArray.length === 0) {
+      alert("Select at least one event!");
+      return;
+    }
+
+    for (let event of selectedEventsArray) {
+      const athletes = athleteData[event] || {};
+      if (!athletes.student1?.urn && !athletes.student2?.urn) {
+        alert(`At least one student must be entered in ${event}`);
+        return;
+      }
+      formData.append("events", event);
+      if (athletes.student1?.urn) {
+        formData.append("student1Name", athletes.student1.name || "");
+        formData.append("student1URN", athletes.student1.urn);
+        if (athletes.student1.idCard) formData.append("student1Image", athletes.student1.idCard);
+      }
+      if (athletes.student2?.urn) {
+        formData.append("student2Name", athletes.student2.name || "");
+        formData.append("student2URN", athletes.student2.urn);
+        if (athletes.student2.idCard) formData.append("student2Image", athletes.student2.idCard);
+      }
+    }
+
+    try {
+      const response = await fetch("http://localhost:5000/student/register", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      const text = await response.text();
+      try {
+        const jsonResponse = JSON.parse(text);
+        alert(jsonResponse.message || "Registration Successful!");
+      } catch {
+        alert(text);
+      }
+      if (response.ok) navigate("/studentform");
+    } catch (error) {
+      console.error("Error:", error);
+      alert("Server error.");
+    }
+  };
+
+  return (
+    <div className="sports-app">
+      <nav className="navbar">
+        <div className="college-name">{collegeName}</div>
+        <div className="nav-buttons">
+          <button className="support-btn">Support</button>
+          <button className="logout-btn" onClick={handleLogout}>Logout</button>
+        </div>
+      </nav>
+
+      <div className="background">
+        <h2 className="welcome-text">Welcome to Sports Meet, {collegeName}</h2>
+      </div>
+
+      <div className="events-container">
+        {events.map((event, index) => (
+          <div key={index} className="event-card">
+            <div className="event-title">{event}</div>
+            <button
+              className={`select-btn ${selectedEvents[event] ? "selected" : ""}`}
+              onClick={() => handleEventSelection(event)}
+            >
+              {selectedEvents[event] ? "Deselect" : "Select"}
+            </button>
+
+            {selectedEvents[event] && (
+              <div className="athlete-form">
+                <h4>Student 1</h4>
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={athleteData[event]?.student1?.name || ""}
+                  onChange={(e) => handleInputChange(event, "student1", "name", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="URN"
+                  value={athleteData[event]?.student1?.urn || ""}
+                  onChange={(e) => handleInputChange(event, "student1", "urn", e.target.value)}
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleInputChange(event, "student1", "idCard", e.target.files[0])}
+                />
+
+                <h4>Student 2 (Optional)</h4>
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={athleteData[event]?.student2?.name || ""}
+                  onChange={(e) => handleInputChange(event, "student2", "name", e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="URN"
+                  value={athleteData[event]?.student2?.urn || ""}
+                  onChange={(e) => handleInputChange(event, "student2", "urn", e.target.value)}
+                />
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleInputChange(event, "student2", "idCard", e.target.files[0])}
+                />
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="submit-container">
+        <button className="submit-btn" onClick={handleSubmit}>
+          Submit
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default SportsApp;
